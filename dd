@@ -1,0 +1,85 @@
+<?php
+
+namespace Hdf\Service\Cooperation\Domain\Knowledge\CooperationStrategy;
+
+use Hdf\Service\Cooperation\Domain\Entity\CooperationLog;
+use Hdf\Service\Cooperation\Domain\Entity\CooperationOrder;
+use Sparta\Foundation\DateTime\XDateTime;
+
+//导医通策略
+class DaoyitongStrategy extends BaseCooperationStrategy implements ICooperationStrategy
+{/*{{{*/
+    public $connect;
+
+    public function __construct()
+    {
+        $this->connect = new DaoyitongCooperation();
+    }
+
+    //创建订单
+    public function createCooperationOrder($userId, $patientId, $cooperationId, $schedule, $otherParams)
+    {/*{{{*/
+
+    }/*}}}*/
+
+    /**
+     * 从导医通订单中取消该订单
+     * @api /rest/register/order/deregistration/{orderId}
+     * @param $dyt_order_id `导医通订单id`
+     * @return bool
+     */
+    function cancelOrderFromDYT($dyt_order_id){
+        $result = $this->connect->cancelOrder($dyt_order_id);
+        if ($result['code'] != CooperationBase::ERROR_CODE_SUCCESS){
+            echo "取消导医通信息 [CURL] 异常 ".$result['msg']."\n";
+            return false;
+        }
+        if ($result['data']['code'] != 1){
+            echo "取消导医通信息 [返回] 异常 ".$result['data']['message']."\n";
+            return false;
+        }
+        return true;
+    }
+
+    /**
+     * 取消订单
+     * @param $order CooperationOrder `订单 `
+     * @return array
+     */
+    public function cancelCoopOrder($order,$para)
+    {
+        if ($order->status == CooperationOrder::STATUS_CANCEL){
+            return array("success" => false, "msg" => "该订单已取消");
+        }
+        if (!$this->fromScript($para) and //来自脚本不进行同步操作，因为已同步了
+            !$this->cancelOrderFromDYT($order -> cooperation -> cooperationId)){
+            return array("success" => false, "msg" => "同步取消导医通订单失败");
+        }
+        $this->recordCancelOrderByAdmin($order -> cooperation -> cooperationId);
+        $order -> setCancel();
+        return array("success" => true, "msg" => "ok");
+    }
+
+    function recordCancelOrderByAdmin($id){
+        CooperationLog::create($id,CooperationLog::SOURCE_TYPE_COOPERATIONORDER,
+            6,CooperationLog::OPERATETYPE_AUDIT,"cancel");
+    }
+
+    public function orderInfoOfDYT($order_id)
+    {
+        return $this->connect->orderInfo($order_id);
+    }
+
+    function fromScript($p){
+        if (isset($p['from']) and $p['from']=='script'){
+            return true;
+        }
+        return false;
+    }
+
+    //获取订单填写页面
+    public function getOrderSubmitInfo4Coorperation($coorperationId)
+    {
+
+    }
+}/*}}}*/
